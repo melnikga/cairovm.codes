@@ -68,6 +68,7 @@ const Editor = ({ readOnly = false }: Props) => {
     casmToSierraMap,
     currentSierraVariables,
     logs: apiLogs,
+    cairoLocation,
   } = useContext(CairoVMApiContext)
 
   const { addToConsoleLog, isThreeColumnLayout } = useContext(AppUiContext)
@@ -80,7 +81,6 @@ const Editor = ({ readOnly = false }: Props) => {
   const editorRef = useRef<SCEditorRef>()
   const [showArgumentsHelper, setShowArgumentsHelper] = useState(false)
   const timeoutRef = useRef<NodeJS.Timeout | null>(null)
-
   useEffect(() => {
     const query = router.query
 
@@ -158,10 +158,205 @@ const Editor = ({ readOnly = false }: Props) => {
     if (_codeType === CodeType.CASM) {
       _codeType = 'bytecode'
     }
+    type TextIndices = {
+      text: string
+      startStr: number
+      endStr: number
+    }
 
+    function findTextIndices(html: string): TextIndices[] {
+      const indices: TextIndices[] = []
+      const tagPattern = /<\/?[^>]+>/g
+      let match
+      let lastIndex = 0
+      while ((match = tagPattern.exec(html)) !== null) {
+        const textBetweenTags = html.substring(lastIndex, match.index)
+        if (textBetweenTags) {
+          indices.push({
+            text: textBetweenTags,
+            startStr: lastIndex,
+            endStr: match.index,
+          })
+        }
+        lastIndex = match.index + match[0].length
+      }
+
+      const trailingText = html.substring(lastIndex)
+      if (trailingText) {
+        indices.push({
+          text: trailingText,
+          startStr: lastIndex,
+          endStr: html.length,
+        })
+      }
+
+      return indices
+    }
+    console.log(cairoLocation)
+    const newValue = value.split('\n')
     return codeHighlight(value, _codeType)
       .value.split('\n')
-      .map((line, i) => `<span class='line-number'>${i + 1}</span>${line}`)
+      .map((line, i) => {
+        if (
+          cairoLocation &&
+          Object.keys(cairoLocation).length !== 0 &&
+          activeCasmInstructionIndex !== null
+        ) {
+          const textIndices = findTextIndices(line)
+          const cairoCoordinates = newValue[i].slice(
+            cairoLocation[activeCasmInstructionIndex]?.cairo_location?.start
+              .col - 1,
+            cairoLocation[activeCasmInstructionIndex]?.cairo_location?.end
+              ?.col + 1,
+          )
+          const range =
+            cairoLocation[activeCasmInstructionIndex]?.cairo_location?.end
+              ?.col -
+            1 -
+            cairoLocation[activeCasmInstructionIndex]?.cairo_location?.start
+              .col +
+            1
+          let newLine
+          textIndices.map((item) => {
+            if (
+              (item.text.trim().includes(cairoCoordinates.trim()) ||
+                cairoCoordinates.trim().includes(item.text.trim())) &&
+              cairoLocation[activeCasmInstructionIndex]?.cairo_location?.start
+                ?.line === i
+            ) {
+              if (
+                cairoLocation[activeCasmInstructionIndex]?.cairo_location?.end
+                  ?.line !== i
+              ) {
+                newLine =
+                  line.slice(
+                    0,
+                    line.slice(item.startStr).indexOf(cairoCoordinates),
+                  ) +
+                  '<span class="bg-red-100">' +
+                  line.slice(
+                    line.slice(item.startStr).indexOf(cairoCoordinates),
+                    item.endStr,
+                  ) +
+                  '</span>' +
+                  line.slice(item.endStr)
+                console.log('moreonelines')
+              } else {
+                if (item.text.trim().includes(cairoCoordinates)) {
+                  console.log('odnalines')
+                  newLine =
+                    line.slice(0, item.startStr) +
+                    line.slice(
+                      item.startStr,
+                      item.startStr +
+                        line.slice(item.startStr).indexOf(cairoCoordinates),
+                    ) +
+                    '<span class="bg-red-100">' +
+                    line.slice(
+                      item.startStr +
+                        line.slice(item.startStr).indexOf(cairoCoordinates),
+                      item.startStr +
+                        line.slice(item.startStr).indexOf(cairoCoordinates) +
+                        range,
+                    ) +
+                    '</span>' +
+                    line.slice(
+                      item.startStr +
+                        line.slice(item.startStr).indexOf(cairoCoordinates) +
+                        range,
+                    )
+                  console.log(
+                    'line: \n' + line + '\n',
+                    'newLine: \n' + newLine + '\n',
+                    'item.text: \n' + item.text + '\n',
+                    'item.startStr: \n' + item.startStr + '\n',
+                    'cairoCoordinates: \n' + cairoCoordinates + '\n',
+                    'line.indexOf(cairoCoordinates): \n' +
+                      line.indexOf(cairoCoordinates) +
+                      '\n',
+                    'newValue: \n' + newValue[i] + '\n',
+                    'line.slice(item.startStr).indexOf(cairoCoordinates): \n' +
+                      line.slice(item.startStr).indexOf(cairoCoordinates) +
+                      '\n',
+                  )
+                } else if (cairoCoordinates.includes(item.text.trim())) {
+                  newLine =
+                    line.slice(
+                      0,
+                      line.indexOf(cairoCoordinates) !== -1
+                        ? line.indexOf(cairoCoordinates)
+                        : item.startStr,
+                    ) +
+                    '<span class="bg-red-100">' +
+                    line.slice(
+                      line.indexOf(cairoCoordinates) !== -1
+                        ? line.indexOf(cairoCoordinates)
+                        : item.startStr,
+                      item.endStr,
+                    ) +
+                    '</span>' +
+                    line.slice(item.endStr)
+                  console.log(
+                    'elseif',
+                    'line: \n' + line + '\n',
+                    'newLine: \n' + newLine + '\n',
+                    'item.text: \n' + item.text + '\n',
+                    'item.startStr: \n' + item.startStr + '\n',
+                    'cairoCoordinates: \n' + cairoCoordinates + '\n',
+                    'line.indexOf(cairoCoordinates): \n' +
+                      line.indexOf(cairoCoordinates) +
+                      '\n',
+                    'newValue: \n' + newValue[i] + '\n',
+                    'line.slice(item.startStr).indexOf(cairoCoordinates): \n' +
+                      line.slice(item.startStr).indexOf(cairoCoordinates) +
+                      '\n',
+                  )
+                }
+              }
+            } else {
+              if (
+                cairoLocation[activeCasmInstructionIndex]?.cairo_location?.start
+                  ?.line < i &&
+                i <
+                  cairoLocation[activeCasmInstructionIndex]?.cairo_location?.end
+                    ?.line
+              ) {
+                newLine =
+                  line.slice(
+                    0,
+                    line.slice(item.startStr).indexOf(cairoCoordinates),
+                  ) +
+                  '<span class="bg-red-100">' +
+                  line.slice(
+                    line.slice(item.startStr).indexOf(cairoCoordinates),
+                    item.endStr,
+                  ) +
+                  '</span>' +
+                  line.slice(item.endStr)
+                console.log(
+                  'else',
+                  'line: \n' + line + '\n',
+                  'newLine: \n' + newLine + '\n',
+                  'item.text: \n' + item.text + '\n',
+                  'item.startStr: \n' + item.startStr + '\n',
+                  'cairoCoordinates: \n' + cairoCoordinates + '\n',
+                  'line.indexOf(cairoCoordinates): \n' +
+                    line.indexOf(cairoCoordinates) +
+                    '\n',
+                  'newValue: \n' + newValue[i] + '\n',
+                  'line.slice(item.startStr).indexOf(cairoCoordinates): \n' +
+                    line.slice(item.startStr).indexOf(cairoCoordinates) +
+                    '\n',
+                )
+              }
+            }
+          })
+          return `<span class='line-number'>${i + 1}</span>${
+            newLine ? newLine : line
+          }`
+        }
+        return `<span class='line-number'>${i + 1}</span>${line}`
+      })
       .join('\n')
   }
 
@@ -330,6 +525,8 @@ const Editor = ({ readOnly = false }: Props) => {
     }
   }, [])
 
+  // console.log(cairoCode)
+
   return (
     <>
       <div className="bg-gray-100 dark:bg-black-700 rounded-lg">
@@ -371,6 +568,7 @@ const Editor = ({ readOnly = false }: Props) => {
                 <SCEditor
                   // @ts-ignore: SCEditor is not TS-friendly
                   ref={editorRef}
+                  id="myTextarea"
                   value={codeType === CodeType.Cairo ? cairoCode : ''}
                   readOnly={readOnly}
                   onValueChange={handleCairoCodeChange}
@@ -379,6 +577,8 @@ const Editor = ({ readOnly = false }: Props) => {
                   className={cn('code-editor', {
                     'with-numbers': !isBytecode,
                   })}
+                  preClassName="bg-red-100"
+                  textareaClassName="bg-red-100"
                 />
               )}
             </div>

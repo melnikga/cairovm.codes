@@ -20,6 +20,22 @@ export enum ProgramExecutionState {
   Error,
 }
 
+type CairoLocation = {
+  [key: string]: {
+    fn_name: string
+    cairo_location: {
+      start: {
+        line: number
+        col: number
+      }
+      end: {
+        line: number
+        col: number
+      } | null
+    } | null
+  }
+}
+
 type CasmToSierraMap = { [key: string]: number[] }
 export type BreakPoints = { [key: string]: boolean }
 
@@ -43,6 +59,7 @@ type ContextProps = {
   currentTraceEntry?: TraceEntry
   currentSierraVariables?: SierraVariables
   breakPoints?: BreakPoints
+  cairoLocation: CairoLocation
 
   compileCairoCode: (cairoCode: string, programArguments: string) => void
   onExecutionStepChange: (step: number) => void
@@ -66,7 +83,7 @@ export const CairoVMApiContext = createContext<ContextProps>({
   sierraStatements: [],
   casmToSierraMap: {},
   breakPoints: {},
-
+  cairoLocation: {},
   compileCairoCode: noOp,
   onExecutionStepChange: noOp,
   onContinueExecution: noOp,
@@ -79,6 +96,7 @@ export const CairoVMApiProvider: React.FC<PropsWithChildren> = ({
 }) => {
   const [sierraCode, setSierraCode] = useState<string>('')
   const [casmCode, setCasmCode] = useState<string>('')
+  const [cairoLocation, setCairoLocation] = useState<CairoLocation>({})
   const [casmInstructions, setCasmInstructions] = useState<IInstruction[]>([])
   const [cairoLangCompilerVersion, setCairoLangCompilerVersion] = useState('')
   const [compilationState, setCompilationState] =
@@ -184,6 +202,11 @@ export const CairoVMApiProvider: React.FC<PropsWithChildren> = ({
           pcToInstIndexesMap: data.tracer_data.pc_to_inst_indexes_map,
           entryToSierraVarsMap: data.tracer_data.trace_entries_to_sierra_vars,
         })
+        setCairoLocation(
+          data.tracer_data.sierra_to_cairo_debug_info
+            .sierra_statements_to_cairo_info,
+        )
+        console.log(cairoLocation)
         setBreakPoints(
           Object.keys(data.tracer_data.memory).reduce(
             (state, value) => ({ ...state, [value]: false }),
@@ -228,7 +251,7 @@ export const CairoVMApiProvider: React.FC<PropsWithChildren> = ({
         sierraStatements,
         casmToSierraMap,
         breakPoints,
-
+        cairoLocation,
         compileCairoCode,
         onExecutionStepChange,
         onContinueExecution,
